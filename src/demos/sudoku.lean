@@ -91,7 +91,7 @@ def sudoku_encoding : cnf nat :=
   -- For each (row, col, num) that is provided, add a unit clause setting that number
   --set_squares.map (λ triple, [square_lit triple.1 triple.2.1 triple.2.2])
 
---#eval sudoku_encoding []
+#eval sudoku_encoding
 --#eval length (sudoku_encoding [])
 
 
