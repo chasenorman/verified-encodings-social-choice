@@ -24,18 +24,48 @@ open alk amk distinct
 open direct_amo
 open sinz_amo
 
-open_locale classical
-noncomputable theory
 
-structure graph := (V : Type) (f : fintype V) (i : inhabited V) (w : V → V → ℤ) --(a : anti_symmetric w)
+
+structure graph := (V : Type) (f : fintype V) (i : inhabited V) (d : decidable_eq V) (w : V → V → ℤ) --(a : anti_symmetric w)
+
 
 instance i {g : graph} : fintype g.V := g.f
 
+/-instance v_decidable_eq {g : graph} : decidable_eq g.V := g.d
+instance w_decidable_eq {g : graph} : decidable_eq (g.V → g.V → ℤ) := by apply_instance
+--instance g_decidable_eq : decidable_eq graph := by tactic.mk_dec_eq_instance
+instance g_decidable_eq : decidable_eq graph := 
+begin 
+  intros a b,
+  cases a,
+  cases b,
+  simp,
+  exact and.decidable,
+end-/
+
+
+
 structure pointed_graph := (g : graph) (v : g.V)
 
-instance pointed_graph_inhabited : inhabited pointed_graph := inhabited.mk ⟨⟨bool, bool.fintype, inhabited.mk ff, λ x y, 0⟩, ff⟩
+
+
+
+instance pointed_graph_inhabited : inhabited pointed_graph := inhabited.mk ⟨⟨bool, bool.fintype, inhabited.mk ff, bool.decidable_eq, λ x y, 0⟩, ff⟩
 
 structure graph_embedding := (g₁ : graph) (g₂ : graph) (f : g₁.V → g₂.V) (x : g₂.V) (p : set.univ \ (set.range f) = {x})
+
+def simple {V : Type} (a b : V) : bool → V
+| ff := a
+| tt := b
+
+def special1 (e : graph_embedding) (v : e.g₁.V) : graph := 
+  ⟨bool, bool.fintype, inhabited.mk ff, bool.decidable_eq, 
+    (ite (e.g₂.w (e.f v) e.x > 0) 
+      (λ a b, e.g₂.w (simple (e.f v) e.x a) (simple (e.f v) e.x b))
+      (λ a b, e.g₂.w (simple (e.f v) e.x b) (simple (e.f v) e.x a)))⟩
+
+def special2 (e : graph_embedding) (v : e.g₁.V) : bool := 
+  (ite (e.g₂.w (e.f v) e.x > 0) ff tt)
 
 def encoding (D : list graph) (E : list graph_embedding) : cnf pointed_graph := 
   -- at least one literal selected for each graph
@@ -43,13 +73,11 @@ def encoding (D : list graph) (E : list graph_embedding) : cnf pointed_graph :=
   -- at most one literal selected for each graph
   join (D.map (λ g: graph, direct_amo ((fintype.elems (g.V)).to_list.map (λ v, Pos ⟨g, v⟩)))) ++
   -- binary gamma for each embedding
-  join (E.map (λ e, ((fintype.elems {v : e.g₁.V // 0 < e.g₂.w (e.f v) e.x}).to_list.map (λ v, [Neg ⟨e.g₁, v⟩, Pos ⟨e.g₂, e.f v⟩])) ))
-
--- Neg ⟨⟨bool, bool.fintype, λ x y, ite 0 (e.g₂.w v x)⟩, ff⟩,
+  join (E.map (λ e, ((fintype.elems e.g₁.V).to_list.map (λ v, [Neg ⟨special1 e v, special2 e v⟩, Neg ⟨e.g₁, v⟩, Pos ⟨e.g₂, e.f v⟩])) ))
 
 --#eval encoding nil nil
 
-def binary_gamma (E : list graph_embedding) (f : Π g : graph, g.V) := ∀ e : graph_embedding, e ∈ E → 0 < (e.g₂.w (e.f (f e.g₁)) e.x) → (f e.g₂ = e.f (f e.g₁))
+def binary_gamma (E : list graph_embedding) (f : Π g : graph, g.V) := ∀ e : graph_embedding, e ∈ E → (f (special1 e (f e.g₁))) = (special2 e (f e.g₁)) → (f e.g₂ = e.f (f e.g₁))
 
 lemma lemma1 {n : ℕ} (a : ¬ n = 1) (b : ¬ n ≥ 2) : n = 0 := by omega
 
@@ -111,11 +139,17 @@ begin
     subst h,
     simp [eval_tt_iff_exists_literal_eval_tt],
     simp [literal.eval],
+    
+    apply not_or_of_imp,
+    intro sp,
     apply not_or_of_imp,
     intro veq,
+
+    unfold binary_gamma at bg,
+    specialize bg e ee,
+    rw <-veq at sp,
+    specialize bg sp,
     rw <-veq,
-    cases p,
-    rw <-veq at p_w,
-    exact bg e ee p_w,
+    exact bg,
   }
 end
