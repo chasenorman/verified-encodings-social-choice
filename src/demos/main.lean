@@ -13,7 +13,6 @@ import data.nat.basic
 import data.list.basic
 import data.list.range
 
---import algebra.order.monoid.nat_cast
 import logic.equiv.fin
 
 open nat
@@ -28,28 +27,35 @@ open direct_amo
 open sinz_amo
 
 @[derive decidable_eq]
-structure graph := (n : ℕ) (p : 0 < n) (w : fin n → fin n → ℤ) --(a : anti_symmetric w)
+structure graph := {n : ℕ} (p : 0 < n) (w : fin n → fin n → ℤ) (a : ∀ x y, w x y = - w y x) (id: ℕ)
 
 @[derive decidable_eq]
 structure pointed_graph := (g : graph) (v : fin g.n)
 
 instance pointed_graph_inhabited : inhabited pointed_graph := 
-  inhabited.mk ⟨⟨1, nat.zero_lt_one, λ x y, 0⟩ , 0⟩
+  inhabited.mk ⟨⟨nat.zero_lt_one, λ x y, 0, by simp [fin.forall_fin_one], 0⟩ , 0⟩
 
---  inhabited.mk ⟨⟨bool, bool.fintype, inhabited.mk ff, bool.decidable_eq, λ x y, 0⟩, ff⟩
-
-structure graph_embedding := (g₁ : graph) (g₂ : graph) (f : fin g₁.n → fin g₂.n) (x : fin g₂.n) (p : set.univ \ (set.range f) = {x})
-
-def simple {V : Type} (a b : V) : fin 2 → V := (fin_two_arrow_equiv V).inv_fun ⟨a, b⟩
+structure graph_embedding := (g₁ : graph) (g₂ : graph) (f : fin g₁.n → fin g₂.n) (x : fin g₂.n) (p : finset.univ \ finset.image f finset.univ = {x})
 
 def special1 (e : graph_embedding) (v : fin e.g₁.n) : graph := 
-  ⟨2, zero_lt_two, 
+  ⟨zero_lt_two, 
     (ite (e.g₂.w (e.f v) e.x > 0) 
-      (λ a b, e.g₂.w (simple (e.f v) e.x a) (simple (e.f v) e.x b))
-      (λ a b, e.g₂.w (simple (e.f v) e.x b) (simple (e.f v) e.x a)))⟩
+      (λ a b, e.g₂.w (![(e.f v), e.x] a) (![(e.f v), e.x] b))
+      (λ a b, e.g₂.w (![(e.f v), e.x] b) (![(e.f v), e.x] a))),
+      begin
+        repeat {rw fin.forall_fin_two},
+        by_cases e.g₂.w (e.f v) e.x > 0,
+        rw ite_eq_left_iff.mpr (λ nP, by_contra (λ _, nP h)),
+        repeat {rw ←e.g₂.a},
+        split, split, refl, refl, split, refl, refl,
+        rw ite_eq_right_iff.mpr (λ P, by_contra (λ _, h P)),
+        repeat {rw ←e.g₂.a},
+        split, split, refl, refl, split, refl, refl,
+      end,
+      int.nat_abs (|e.g₂.w (e.f v) e.x|.div2 - 1)⟩
 
 def special2 (e : graph_embedding) (v : fin e.g₁.n) : fin 2 := 
-  (ite (e.g₂.w (e.f v) e.x > 0) ⟨0, zero_lt_two⟩ ⟨1, one_lt_two⟩)
+  (ite (e.g₂.w (e.f v) e.x > 0) 0 1)
 
 def encoding (D : list graph) (E : list graph_embedding) : cnf pointed_graph := 
   -- at least one literal selected for each graph
@@ -59,7 +65,7 @@ def encoding (D : list graph) (E : list graph_embedding) : cnf pointed_graph :=
   -- binary gamma for each embedding
   join (E.map (λ e, (list.of_fn (λ v, [Neg ⟨special1 e v, special2 e v⟩, Neg ⟨e.g₁, v⟩, Pos ⟨e.g₂, e.f v⟩])) ))
 
-#eval (encoding [⟨1, nat.zero_lt_one, λ x y, 0⟩] nil)
+--#eval (encoding [⟨1, nat.zero_lt_one, λ x y, 0⟩] nil)
 
 def binary_gamma (E : list graph_embedding) (f : Π g : graph, fin g.n) := ∀ e : graph_embedding, e ∈ E → (f (special1 e (f e.g₁))) = (special2 e (f e.g₁)) → (f e.g₂ = e.f (f e.g₁))
 
