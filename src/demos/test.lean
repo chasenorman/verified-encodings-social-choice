@@ -21,4 +21,7 @@ def print_cnf : cnf pointed_graph → string
 | [] := ""
 | (u :: v) := print_clause u ++ "\n" ++ print_cnf v
 
-#eval io.print (print_cnf (encoding graphs embeddings))
+
+def result : cnf pointed_graph := (encoding graphs embeddings)
+
+#eval io.print ("p cnf 2864 " ++ (list.length result).repr ++ "\n" ++ (print_cnf result))

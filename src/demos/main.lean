@@ -63,11 +63,11 @@ def encoding (D : list graph) (E : list graph_embedding) : cnf pointed_graph :=
   -- at most one literal selected for each graph
   join (D.map (λ g: graph, direct_amo (list.of_fn (λ v, Pos ⟨g, v⟩)))) ++
   -- binary gamma for each embedding
-  join (E.map (λ e, (list.of_fn (λ v, [Neg ⟨special1 e v, special2 e v⟩, Neg ⟨e.g₁, v⟩, Pos ⟨e.g₂, e.f v⟩])) ))
+  join (E.map (λ e, (list.reduce_option (list.of_fn (λ v, (ite (e.g₂.w (e.f v) e.x = 0) none (some [Neg ⟨special1 e v, special2 e v⟩, Neg ⟨e.g₁, v⟩, Pos ⟨e.g₂, e.f v⟩])))) )))
 
 --#eval (encoding [⟨1, nat.zero_lt_one, λ x y, 0⟩] nil)
 
-def binary_gamma (E : list graph_embedding) (f : Π g : graph, fin g.n) := ∀ e : graph_embedding, e ∈ E → (f (special1 e (f e.g₁))) = (special2 e (f e.g₁)) → (f e.g₂ = e.f (f e.g₁))
+def binary_gamma (E : list graph_embedding) (f : Π g : graph, fin g.n) := ∀ e : graph_embedding, e ∈ E → (e.g₂.w (e.f (f e.g₁)) e.x ≠ 0) → (f (special1 e (f e.g₁))) = (special2 e (f e.g₁)) → (f e.g₂ = e.f (f e.g₁))
 
 lemma lemma1 {n : ℕ} (a : ¬ n = 1) (b : ¬ n ≥ 2) : n = 0 := by omega
 
@@ -117,10 +117,21 @@ begin
     },
   },
   {
+    rw list.reduce_option_mem_iff at h,
     rw list.mem_of_fn at h,
     rw set.mem_range at h,
     cases h with y h,
-    subst h,
+    let h2 := h,
+    by_cases (e.g₂.w (e.f y) e.x = 0),
+    rw ite_eq_left_iff.mpr (λ nP, by_contra (λ _, nP h)) at h2,
+    simp at h2,
+    exfalso,
+    exact h2,
+    rw ite_eq_right_iff.mpr (λ P, by_contra (λ _, h P)) at h2,
+    simp at h2,
+    let h3 := h,
+
+    subst h2,
     simp [eval_tt_iff_exists_literal_eval_tt],
     simp [literal.eval],
     
@@ -132,6 +143,8 @@ begin
     unfold binary_gamma at bg,
     specialize bg e ee,
     rw <-veq at sp,
+    rw <-veq at h3,
+    specialize bg h3,
     specialize bg sp,
     rw <-veq,
     exact bg,
