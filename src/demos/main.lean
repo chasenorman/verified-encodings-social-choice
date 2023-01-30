@@ -27,31 +27,21 @@ open direct_amo
 open sinz_amo
 
 @[derive decidable_eq]
-structure graph := {n : ℕ} (p : 0 < n) (w : fin n → fin n → ℤ) (a : ∀ x y, w x y = - w y x) (id: ℕ)
+structure graph := {n : ℕ} (p₁ : 0 < n) (p₂ : n < 5) (w : fin n → fin n → ℤ) (a : ∀ x y, w x y = - w y x) (u : ∀ a b c d, a ≠ b → w a b = w c d → (a = c ∧ b = d)) (id: ℕ)
 
 @[derive decidable_eq]
 structure pointed_graph := (g : graph) (v : fin g.n)
 
 instance pointed_graph_inhabited : inhabited pointed_graph := 
-  inhabited.mk ⟨⟨nat.zero_lt_one, λ x y, 0, by simp [fin.forall_fin_one], 0⟩ , 0⟩
+  inhabited.mk ⟨⟨nat.zero_lt_one, dec_trivial, λ x y, 0, dec_trivial, dec_trivial, 0⟩ , 0⟩
 
-structure graph_embedding := (g₁ : graph) (g₂ : graph) (f : fin g₁.n → fin g₂.n) (x : fin g₂.n) (p : finset.univ \ finset.image f finset.univ = {x})
+structure graph_embedding := (g₁ : graph) (g₂ : graph) (f : fin g₁.n → fin g₂.n) (x : fin g₂.n) (p : finset.univ \ finset.image f finset.univ = {x}) (e : ∀ a b, g₁.w a b = g₂.w (f a) (f b))
 
-def special1 (e : graph_embedding) (v : fin e.g₁.n) : graph := 
-  ⟨zero_lt_two, 
-    (ite (e.g₂.w (e.f v) e.x > 0) 
-      (λ a b, e.g₂.w (![(e.f v), e.x] a) (![(e.f v), e.x] b))
-      (λ a b, e.g₂.w (![(e.f v), e.x] b) (![(e.f v), e.x] a))),
-      begin
-        repeat {rw fin.forall_fin_two},
-        by_cases e.g₂.w (e.f v) e.x > 0,
-        rw ite_eq_left_iff.mpr (λ nP, by_contra (λ _, nP h)),
-        repeat {rw ←e.g₂.a},
-        split, split, refl, refl, split, refl, refl,
-        rw ite_eq_right_iff.mpr (λ P, by_contra (λ _, h P)),
-        repeat {rw ←e.g₂.a},
-        split, split, refl, refl, split, refl, refl,
-      end,
+def special1 (e : graph_embedding) (v : fin e.g₁.n) (p : e.g₂.w (e.f v) e.x ≠ 0) : graph := 
+  ⟨zero_lt_two, dec_trivial,
+    ![![0, |e.g₂.w (e.f v) e.x|], ![-|e.g₂.w (e.f v) e.x|, 0]],
+      by simp [fin.forall_fin_two],
+      by simp [fin.forall_fin_two, p, eq_neg_self_iff, neg_eq_self_iff],
       int.nat_abs (|e.g₂.w (e.f v) e.x|.div2 - 1)⟩
 
 def special2 (e : graph_embedding) (v : fin e.g₁.n) : fin 2 := 
@@ -63,11 +53,11 @@ def encoding (D : list graph) (E : list graph_embedding) : cnf pointed_graph :=
   -- at most one literal selected for each graph
   join (D.map (λ g: graph, direct_amo (list.of_fn (λ v, Pos ⟨g, v⟩)))) ++
   -- binary gamma for each embedding
-  join (E.map (λ e, (list.reduce_option (list.of_fn (λ v, (ite (e.g₂.w (e.f v) e.x = 0) none (some [Neg ⟨special1 e v, special2 e v⟩, Neg ⟨e.g₁, v⟩, Pos ⟨e.g₂, e.f v⟩])))) )))
+  join (E.map (λ e, (list.reduce_option (list.of_fn (λ v, (dite (e.g₂.w (e.f v) e.x = 0) (λ _, none) (λ _x, some [Neg ⟨special1 e v _x, special2 e v⟩, Neg ⟨e.g₁, v⟩, Pos ⟨e.g₂, e.f v⟩])))) )))
 
 --#eval (encoding [⟨1, nat.zero_lt_one, λ x y, 0⟩] nil)
 
-def binary_gamma (E : list graph_embedding) (f : Π g : graph, fin g.n) := ∀ e : graph_embedding, e ∈ E → (e.g₂.w (e.f (f e.g₁)) e.x ≠ 0) → (f (special1 e (f e.g₁))) = (special2 e (f e.g₁)) → (f e.g₂ = e.f (f e.g₁))
+def binary_gamma (E : list graph_embedding) (f : Π g : graph, fin g.n) := ∀ e : graph_embedding, e ∈ E → (∀ x : (e.g₂.w (e.f (f e.g₁)) e.x ≠ 0), (f (special1 e (f e.g₁) x)) = (special2 e (f e.g₁)) → (f e.g₂ = e.f (f e.g₁)))
 
 lemma lemma1 {n : ℕ} (a : ¬ n = 1) (b : ¬ n ≥ 2) : n = 0 := by omega
 
@@ -120,14 +110,15 @@ begin
     rw list.reduce_option_mem_iff at h,
     rw list.mem_of_fn at h,
     rw set.mem_range at h,
-    cases h with y h,
-    let h2 := h,
+    cases h with y h2,
     by_cases (e.g₂.w (e.f y) e.x = 0),
-    rw ite_eq_left_iff.mpr (λ nP, by_contra (λ _, nP h)) at h2,
+    rw dite_eq_left_iff.mpr (λ nP, by_contra (λ _, nP h)) at h2,
     simp at h2,
     exfalso,
     exact h2,
-    rw ite_eq_right_iff.mpr (λ P, by_contra (λ _, h P)) at h2,
+    change (dite (e.g₂.w (e.f y) e.x = 0) (λ _, none) (λ (_x : ¬e.g₂.w (e.f y) e.x = 0), some [Neg (pointed_graph.mk (special1 e y h) (special2 e y)), Neg ⟨e.g₁, y⟩, Pos ⟨e.g₂, e.f y⟩])) = some cl at h2,
+    
+    rw dite_eq_right_iff.mpr (λ P, by_contra (λ _, h P)) at h2,
     simp at h2,
     let h3 := h,
 
@@ -140,13 +131,15 @@ begin
     apply not_or_of_imp,
     intro veq,
 
+
+    
     unfold binary_gamma at bg,
+    rw <-veq at h,
     specialize bg e ee,
-    rw <-veq at sp,
-    rw <-veq at h3,
-    specialize bg h3,
+    rw veq at bg,
+    rw veq at h,
+    specialize bg h,
     specialize bg sp,
-    rw <-veq,
     exact bg,
   }
 end
